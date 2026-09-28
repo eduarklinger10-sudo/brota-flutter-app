@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -7,7 +8,6 @@ import '../../domain/cuestionario.dart';
 import '../controllers/cuestionarios_controller.dart';
 import '../controllers/cuestionarios_state.dart';
 import '../widgets/cuestionario_card.dart';
-import 'cuestionario_form_screen.dart';
 
 /// `/dashboard/cuestionarios` — lista de cuestionarios de la institución.
 ///
@@ -26,7 +26,7 @@ class CuestionariosScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Cuestionarios')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _abrirFormulario(context),
+        onPressed: () => context.push('/dashboard/cuestionarios/nuevo'),
         icon: const Icon(Icons.add),
         label: const Text('Nuevo'),
       ),
@@ -43,29 +43,71 @@ class CuestionariosScreen extends ConsumerWidget {
             onRetry: () =>
                 ref.read(cuestionariosControllerProvider.notifier).load(),
           ),
-          CuestionariosStatus.idle => state.cuestionarios.isEmpty
-              ? _EmptyView(onCrear: () => _abrirFormulario(context))
-              : _CuestionariosList(
-                  cuestionarios: state.cuestionarios,
-                  onAbrir: (c) => _abrirFormulario(context, cuestionario: c),
-                ),
+          CuestionariosStatus.idle =>
+            state.cuestionarios.isEmpty
+                ? _EmptyView(
+                    onCrear: () =>
+                        context.push('/dashboard/cuestionarios/nuevo'),
+                  )
+                : _CuestionariosList(
+                    cuestionarios: state.cuestionarios,
+                    onAbrir: (c) => context.push(
+                      '/dashboard/cuestionarios/${c.id}/preguntas',
+                      extra: c,
+                    ),
+                    onEditar: (c) => context.push(
+                      '/dashboard/cuestionarios/${c.id}/editar',
+                      extra: c,
+                    ),
+                    onEliminar: (c) => _confirmarEliminacion(context, ref, c),
+                  ),
         },
       ),
     );
   }
 
-  /// Mientras el router (bloque 5) no exista, navegamos con Navigator
-  /// directo. Cuando entren las rutas de go_router, SOLO este método
-  /// cambia — el resto de la pantalla no se entera.
-  Future<void> _abrirFormulario(
-    BuildContext context, {
-    Cuestionario? cuestionario,
-  }) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CuestionarioFormScreen(cuestionario: cuestionario),
+  Future<void> _confirmarEliminacion(
+    BuildContext context,
+    WidgetRef ref,
+    Cuestionario cuestionario,
+  ) async {
+    final bool? confirmado = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('¿Eliminar cuestionario?'),
+        content: Text(
+          '"${cuestionario.nombre}" y todas sus preguntas y opciones '
+          'se borrarán. Esta acción no se puede deshacer.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Eliminar'),
+          ),
+        ],
       ),
     );
+    if (confirmado != true) return;
+
+    final bool eliminado = await ref
+        .read(cuestionariosControllerProvider.notifier)
+        .delete(cuestionario.id);
+    if (!context.mounted) return;
+
+    final String mensaje = eliminado
+        ? 'Cuestionario y sus preguntas eliminados.'
+        : ref.read(cuestionariosControllerProvider).errorMessage ??
+              'No se pudo eliminar el cuestionario.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(mensaje)));
   }
 }
 
@@ -73,10 +115,14 @@ class _CuestionariosList extends StatelessWidget {
   const _CuestionariosList({
     required this.cuestionarios,
     required this.onAbrir,
+    required this.onEditar,
+    required this.onEliminar,
   });
 
   final List<Cuestionario> cuestionarios;
   final ValueChanged<Cuestionario> onAbrir;
+  final ValueChanged<Cuestionario> onEditar;
+  final ValueChanged<Cuestionario> onEliminar;
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +142,12 @@ class _CuestionariosList extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         for (final Cuestionario c in cuestionarios) ...[
-          CuestionarioCard(cuestionario: c, onTap: () => onAbrir(c)),
+          CuestionarioCard(
+            cuestionario: c,
+            onTap: () => onAbrir(c),
+            onEditar: () => onEditar(c),
+            onEliminar: () => onEliminar(c),
+          ),
           const SizedBox(height: AppSpacing.sm),
         ],
       ],
@@ -119,11 +170,7 @@ class _EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.quiz_outlined,
-              size: 64,
-              color: scheme.onSurfaceVariant,
-            ),
+            Icon(Icons.quiz_outlined, size: 64, color: scheme.onSurfaceVariant),
             const SizedBox(height: AppSpacing.md),
             Text(
               'Aún no hay cuestionarios',
@@ -165,11 +212,7 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: scheme.error,
-            ),
+            Icon(Icons.error_outline, size: 64, color: scheme.error),
             const SizedBox(height: AppSpacing.md),
             Text(
               message,

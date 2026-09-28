@@ -7,7 +7,7 @@ import '../../domain/cuestionario.dart';
 
 /// Tarjeta de la lista de cuestionarios: nombre, descripción y chips de
 /// metadatos (versión, número de preguntas, badge "Activa"). Tocable con
-/// efecto ripple para abrir la edición / sus preguntas.
+/// efecto ripple para abrir sus preguntas; el menú ofrece editar y eliminar.
 ///
 /// Detalle de Material que vale la pena conocer: `InkWell` pinta el
 /// splash sobre el widget `Material` MÁS CERCANO, no sobre sí mismo.
@@ -18,10 +18,14 @@ class CuestionarioCard extends StatelessWidget {
     super.key,
     required this.cuestionario,
     required this.onTap,
+    required this.onEditar,
+    required this.onEliminar,
   });
 
   final Cuestionario cuestionario;
   final VoidCallback onTap;
+  final VoidCallback onEditar;
+  final VoidCallback onEliminar;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +49,9 @@ class CuestionarioCard extends StatelessWidget {
             children: [
               Text(
                 cuestionario.nombre,
-                style: AppTypography.bodyLg(scheme.onSurface).copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: AppTypography.bodyLg(
+                  scheme.onSurface,
+                ).copyWith(fontWeight: FontWeight.bold),
               ),
               if (cuestionario.descripcion != null &&
                   cuestionario.descripcion!.isNotEmpty) ...[
@@ -70,6 +74,32 @@ class CuestionarioCard extends StatelessWidget {
                     const _MetaChip(label: 'Activa', destacado: true),
                 ],
               ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: PopupMenuButton<_CuestionarioAction>(
+                  tooltip: 'Acciones del cuestionario',
+                  onSelected: (action) {
+                    switch (action) {
+                      case _CuestionarioAction.editar:
+                        onEditar();
+                        break;
+                      case _CuestionarioAction.eliminar:
+                        onEliminar();
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: _CuestionarioAction.editar,
+                      child: Text('Editar'),
+                    ),
+                    PopupMenuItem(
+                      value: _CuestionarioAction.eliminar,
+                      child: Text('Eliminar'),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -77,6 +107,8 @@ class CuestionarioCard extends StatelessWidget {
     );
   }
 }
+
+enum _CuestionarioAction { editar, eliminar }
 
 class _MetaChip extends StatelessWidget {
   const _MetaChip({required this.label, this.destacado = false});

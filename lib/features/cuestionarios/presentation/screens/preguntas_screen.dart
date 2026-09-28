@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_radii.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -8,7 +9,6 @@ import '../../domain/pregunta.dart';
 import '../controllers/preguntas_controller.dart';
 import '../controllers/preguntas_state.dart';
 import '../widgets/pregunta_tile.dart';
-import 'pregunta_form_screen.dart';
 
 /// Preguntas de UN cuestionario. A diferencia de la lista de
 /// cuestionarios (pantalla sin estado propio), esta SÍ es
@@ -40,11 +40,13 @@ class _PreguntasScreenState extends ConsumerState<PreguntasScreen> {
   }
 
   Future<void> _abrirFormulario({Pregunta? pregunta}) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PreguntaFormScreen(pregunta: pregunta),
-      ),
-    );
+    final String rutaBase =
+        '/dashboard/cuestionarios/${widget.cuestionarioId}/preguntas';
+    if (pregunta == null) {
+      await context.push('$rutaBase/nueva');
+    } else {
+      await context.push('$rutaBase/${pregunta.id}/editar', extra: pregunta);
+    }
   }
 
   /// Confirmación antes de eliminar (plan: SIEMPRE AlertDialog). Para
@@ -103,18 +105,19 @@ class _PreguntasScreenState extends ConsumerState<PreguntasScreen> {
                 .read(preguntasControllerProvider.notifier)
                 .load(widget.cuestionarioId),
           ),
-          PreguntasStatus.idle => state.preguntas.isEmpty
-              ? _EmptyView(onAgregar: _abrirFormulario)
-              : _PreguntasList(
-                  preguntas: state.preguntas,
-                  onAbrir: (p) => _abrirFormulario(pregunta: p),
-                  onEliminarPreguntado: _confirmarEliminar,
-                  // El `ref` vive en la pantalla (ConsumerState); los
-                  // widgets privados de abajo reciben acciones, no providers.
-                  onEliminar: (p) => ref
-                      .read(preguntasControllerProvider.notifier)
-                      .delete(p.id),
-                ),
+          PreguntasStatus.idle =>
+            state.preguntas.isEmpty
+                ? _EmptyView(onAgregar: _abrirFormulario)
+                : _PreguntasList(
+                    preguntas: state.preguntas,
+                    onAbrir: (p) => _abrirFormulario(pregunta: p),
+                    onEliminarPreguntado: _confirmarEliminar,
+                    // El `ref` vive en la pantalla (ConsumerState); los
+                    // widgets privados de abajo reciben acciones, no providers.
+                    onEliminar: (p) => ref
+                        .read(preguntasControllerProvider.notifier)
+                        .delete(p.id),
+                  ),
         },
       ),
     );
@@ -177,10 +180,7 @@ class _PreguntasList extends StatelessWidget {
                 color: scheme.errorContainer,
                 borderRadius: AppRadii.xlRadius,
               ),
-              child: Icon(
-                Icons.delete_outline,
-                color: scheme.onErrorContainer,
-              ),
+              child: Icon(Icons.delete_outline, color: scheme.onErrorContainer),
             ),
             confirmDismiss: (_) => onEliminarPreguntado(p),
             onDismissed: (_) => onEliminar(p),
@@ -209,11 +209,7 @@ class _EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.help_outline,
-              size: 64,
-              color: scheme.onSurfaceVariant,
-            ),
+            Icon(Icons.help_outline, size: 64, color: scheme.onSurfaceVariant),
             const SizedBox(height: AppSpacing.md),
             Text(
               'Este cuestionario no tiene preguntas',

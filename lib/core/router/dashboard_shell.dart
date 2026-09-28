@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../core/result/result.dart';
+import '../../features/cuestionarios/presentation/providers/cuestionarios_providers.dart';
 
 /// Bottom navigation scaffold for the authenticated dashboard area.
 ///
 /// Mirrors `frontend/src/components/layout/TopNavbar.jsx`, adapted to
 /// mobile: the desktop's 6-tab horizontal bar doesn't fit a phone width,
-/// so only the 5 primary destinations become tabs (Inicio, Explorar,
-/// Test, Recursos, Comunidad). "Rutas formativas" y las icons
+/// so the 5 primary destinations become tabs for students (Inicio, Explorar,
+/// Test, Recursos, Comunidad), with Cuestionarios added for institutions.
+/// "Rutas formativas" y las icons
 /// secundarias (favoritos, mensajes, ajustes) stay reachable from within
 /// Inicio/perfil instead of competing for tab-bar space — see
 /// `MOBILE_DESIGN_BRIEF.md` sección 2.2 y CLAUDE.md "Estado de la
@@ -24,7 +29,7 @@ import 'package:go_router/go_router.dart';
 /// Wraps [StatefulShellRoute.indexedStack]'s [navigationShell] so each
 /// tab keeps its own navigation stack and scroll position when the user
 /// switches away and back.
-class DashboardShell extends StatelessWidget {
+class DashboardShell extends ConsumerWidget {
   const DashboardShell({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
@@ -55,20 +60,44 @@ class DashboardShell extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final int currentIndex = navigationShell.currentIndex;
+    final bool isQuestionnaireRoute = GoRouterState.of(
+      context,
+    ).uri.path.startsWith('/dashboard/cuestionarios');
+    final Result<bool>? access = ref
+        .watch(institutionAccessProvider)
+        .valueOrNull;
+    final bool isInstitution = access is Success<bool> && access.value;
+    final List<_DashboardDestination> destinations = [
+      ..._destinations,
+      if (isInstitution)
+        const _DashboardDestination(
+          iconAsset: 'assets/icons/icon-confirmar.svg',
+          label: 'Cuestionarios',
+        ),
+    ];
+    final int selectedIndex = isInstitution && isQuestionnaireRoute
+        ? _destinations.length
+        : currentIndex.clamp(0, _destinations.length - 1);
 
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (int index) => navigationShell.goBranch(
-          index,
-          initialLocation: index == currentIndex,
-        ),
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (int index) {
+          if (isInstitution && index == _destinations.length) {
+            context.go('/dashboard/cuestionarios');
+            return;
+          }
+          navigationShell.goBranch(
+            index,
+            initialLocation: index == currentIndex,
+          );
+        },
         destinations: [
-          for (final _DashboardDestination destination in _destinations)
+          for (final _DashboardDestination destination in destinations)
             NavigationDestination(
               icon: _TabIcon(
                 destination: destination,
@@ -107,11 +136,14 @@ class _TabIcon extends StatelessWidget {
 }
 
 class _DashboardDestination {
-  const _DashboardDestination({this.iconAsset, this.materialIcon, required this.label})
-    : assert(
-        (iconAsset == null) != (materialIcon == null),
-        'Pasa exactamente uno de iconAsset o materialIcon.',
-      );
+  const _DashboardDestination({
+    this.iconAsset,
+    this.materialIcon,
+    required this.label,
+  }) : assert(
+         (iconAsset == null) != (materialIcon == null),
+         'Pasa exactamente uno de iconAsset o materialIcon.',
+       );
 
   final String? iconAsset;
   final IconData? materialIcon;
